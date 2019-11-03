@@ -1,0 +1,47 @@
+---
+title: "Fourteener Code Book"
+author: "Mike Wehinger"
+date: "27 June 2019"
+output: html_document
+---
+
+### Context
+
+This tidy dataset lists mountain peaks rising to an elevation greater than 14,000 ft (4,267 meters) located in the state of Colorado, USA. 
+
+The term fourteener refers to mountain peaks with an elevation greater than 14,000 feet (4,267 meters) and a significant prominence. The prominence is generally agreed to be at least 300 feet higher than the saddle connecting it to a neighboring peak. 
+
+In Colorado, and in this dataset, there are 58 peaks over 14,000 feet. Five of those peaks do not meet the prominence rule, so you can filter the list down to the commonly accepted list of 53 Colorado fourteeners.
+
+### Content
+
+There are 58 rows (plus a header) of data, each representing a mountain peak. There are sixteen variables describing each peak.
+
+-	**ID** - A unique Identifier for each row 
+-	**Mountain Peak** - The name of the peak
+-	**Mountain Range** - The name of the primary mountain range the peak is a member of
+-	**Elevation_ft** - The peak elevation in feet
+-	**Fourteener** - An indicator if the peak is considered a fourteener and includes a value of Y or N
+-	**Prominence_ft** - How much higher the peak is in feet from the next highest point
+-	**Isolation_mi** - The distance in miles from the nearest point of the same or higher elevation
+-	**Lat** -The latitudinal coordinate in decimal form 
+-	**Long** - The longitudinal coordinate in decimal form 
+-	**Standard Route** - The name of the most commonly used hiking/climbing route to the peak
+-	**Distance_mi** - The distance of the standard route in miles 
+- **Elevation Gain_ft** - The elevation gain of the standard route in feet
+-	**Difficulty** - The Yosemite Decimal System difficulty rating, a value ranging from Class 1 (easiest) to Class 5 (most difficult)
+-	**Traffic Low** - The low range of estimated visits in the year 2017
+-	**Traffic High** - The high range of estimated visits in the year 2017
+-	**Photo** - A URL to a photo of the peak
+
+### Acknowledgements
+
+
+- The peaks, ranges, elevations, prominences, isolations, latitudes, and longitudes were orginally sourced from the Colorado Fourteener Wikipedia page [here](https://en.wikipedia.org/wiki/List_of_Colorado_fourteeners). Some data elements were corrected after cross referencing with ifnromation from [peakbagger.com](https://www.peakbagger.com/)
+
+- The route information was scraped from the [www.outtherecolorado.com](https://www.outtherecolorado.com/gallery/colorados-14ers-ranked-by-difficulty/) web site
+
+- The traffic fields are from a report titled *Estimated Hiking Use on Colorado's 14ers* composed by the Colorado Fourteener Initiative  available [here](https://www.14ers.org/2017-colorado-14er-hiking-use-estimates/)
+
+- The photos are hosted on [www.14ers.com/](https://www.14ers.com/)
+

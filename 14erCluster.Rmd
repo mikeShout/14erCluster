@@ -1,0 +1,434 @@
+---
+title: "Clustering & Benchmarking Property"
+author: "Mike Wehinger"
+date: "1 May 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(kableExtra)
+library(reshape)
+library(geosphere)
+library(leaflet)
+library(ggplot2)
+library(ggdendro)
+library(scales)
+library(plotly)
+
+#setwd("C:/Users/mikew/OneDrive/dev/14erCluster") # For mikes
+
+```
+
+## Introduction
+
+This is a demonstration of visualizing, clustering, and benchmarking data that includes a geographical dimension.
+
+Applying basic analysis of your data can produce novel insights to your business or customers, which if not already a fundamental expectation, could give you a competitive advantage or new value proposition. In the financial and property industries, you might have a portfolio of physical assets such as buildings or houses. Grouping similar properties enables you to benchmark individuals against their peers. A benchmark report gives owners, investors, and managers a tool for evaluating and planning for the performance of their asset.
+
+As a proxy for any 'real' portfolio dataset, this example uses data for mountain peaks located in Colorado, USA that have an elevation greater than 14,000 ft (4,270 meters)
+
+Presented first is a simple cluster analysis on the location using lattitude and longitude. The model is then expanded to consider other factors like those describing the hikiing experience.
+
+The steps
+
+1. Load & Familiarize Data
+2. Pick factors and consider cluster sizes
+3. Cluster based on distance
+4. Add other factors to cluster analysis
+5. Visualize data on a map
+6. Using the cluster for benchmarking
+
+## Data
+
+The data included in this example is a tidy list of Colorado peaks with sixteen variables describing each peak. Here is a description of each variable: 
+
+-	**ID** - A unique Identifier for each row 
+-	**Mountain Peak** - The name of the peak
+-	**Mountain Range** - The name of the primary mountain range the peak is a member of
+-	**Elevation_ft** - The peak elevation in feet
+-	**Fourteener** - An indicator if the peak is considered a fourteener and includes a value of Y or N
+-	**Prominence_ft** - How much higher the peak is in feet from the next highest point
+-	**Isolation_mi** - The distance in miles from the nearest point of the same or higher elevation
+-	**Lat** -The latitudinal coordinate in decimal form 
+-	**Long** - The longitudinal coordinate in decimal form 
+-	**Standard Route** - The name of the most commonly used hiking/climbing route to the peak
+-	**Distance_mi** - The distance of the standard route in miles 
+- **Elevation Gain_ft** - The elevation gain of the standard route in feet
+-	**Difficulty** - The Yosemite Decimal System difficulty rating, a value ranging from Class 1 (easiest) to Class 5 (most difficult)
+-	**Traffic Low** - The low range of estimated visits in the year 2017
+-	**Traffic High** - The high range of estimated visits in the year 2017
+-	**Photo** - A URL to a photo of the peak
+
+Reference the code book for more details about these data elements.
+
+The table below shows the first five rows of the dataset.
+
+```{r dataTable, echo=FALSE}
+
+# The data is in a simple CSV (ANSII encoded) file. Load this data into a dataframe...
+
+peaks <- read.csv("14er.csv") #14er_lat_long.csv
+
+peaks <- peaks[peaks$fourteener=="Y",]
+
+kable(head(peaks[,c(-1,-5,-16)],5)) %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+```
+
+## Exploratory Analysis
+
+Starting with peak locations, a quick look at the data gives an initial view as to the greographic spread.  
+
+```{r histos, echo=FALSE}
+par(mfrow = c(1:2))
+
+hist(peaks[peaks$Isolation_mi != 670,]$Isolation_mi, main="Colorado 14er Isolation", xlab="Isolation (miles)", col="chocolate1", breaks = 10)
+hist(peaks$Prominence_ft, main="Colorado 14er Prominence", xlab="Prominence (ft)", col="chocolate1", breaks = 10)
+```
+
+The **isolation** histogram already hints towards the nature of some clustering in the data. Most peaks have a proximity of 10 miles. Another group seem to be within 10 to 30 miles and then a handful are more isolated. Mt Elbert was excluded from this histogram because it is the highest mountain and the next larger peak is Mount Whitney 670 miles away. With the scope of 'Colorado Fourteeners' this isolation figure is an outlier. 
+
+The **prominence** data indicate a little more of an even distribution. Mt Elbert is once again a standout, but this time, it is included because its it not an outlier. It's prominence of 9,093  is nearly double any other peak in the data. 
+
+```{r box, echo=FALSE}
+#kable(sort(table(peaks[,3]), decreasing = TRUE)) %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+
+#qplot( x=Mountain.Range , y=peaks$Elevation_ft, data=peaks , geom=c("boxplot","jitter") , #fill=Mountain.Range)+  labs(subtitle="By Mountain Range", 
+#       y="Elevation (ft)", 
+#       x="Range", 
+#       title="Mountain Elevtion", caption = "Measured in Ft") +  theme(axis.text.x=element_blank(), #axis.ticks.x=element_blank()) + scale_y_continuous(labels = comma) 
+
+#p <- plot_ly(peaks, y = ~Elevation_ft, color = ~Mountain.Range, type = "box", boxpoints = "all", jitter = 0.2, pointpos = 0, marker = list(color = 'rgb(15,79,173)')) %>% layout(title = 'Mountain Elevation By Range', xaxis = list(title = 'Mountain Range'), yaxis = list(title = 'Elevation (ft)'), showlegend = FALSE)
+
+p <- plot_ly(peaks, y = ~Elevation_ft, color = ~Mountain.Range, type = "box", boxpoints = "all", jitter = 0.2, pointpos = 0, marker = list(color = 'rgb(15,79,173)'),hoverinfo = 'text', text = paste(peaks$Mountain.Peak, ", ", format(peaks$Elevation_ft, big.mark = ","), sep="")) %>% layout(title = 'Mountain Elevation By Range', xaxis = list(title = 'Mountain Range'), yaxis = list(title = 'Elevation (ft)'), showlegend = FALSE)
+
+p
+#hoverinfo = 'text', text = txt
+```
+
+The boxplot with jitters shows the distribution of peak elevations within their respective mountain ranges. The mountain range is a natural clustering mechanism. Studying the jitters reveals possible sub-groupings within a range if elevation is an important factor in the data.
+
+## Clustering on Location
+
+We will first conduct a hierarchical cluster analysis based on location in terms of latitude and longitude. Then, interpret the results by comparing to how these clusters relate to the mountain ranges. 
+
+First, create a matrix where the distance between every peak is calculated. For illustrative purposes, the distance is calculated using the [Haversine](https://en.wikipedia.org/wiki/Haversine_formula) formula and presented in miles.
+
+This distance matrix is too big to display in its entirety, but below is an example of the first five mountains. You can see the distance between each in miles (as the crow flies). 
+
+```{r addyMatrix, echo=FALSE}
+
+# addy_matrix <- distm(portfolio[,c('Long','Lat')], portfolio[,c('Long','Lat')], fun=distHaversine)
+dist_matrix <- distm(peaks[,c('Long','Lat')], peaks[,c('Long','Lat')], fun=distHaversine)
+#dist_matrix <- dist_matrix/1609.344 # convert to miles
+dist_matrix <- format(dist_matrix/1609.344, digits = 1)
+colnames(dist_matrix) <- rownames(dist_matrix) <- peaks$Mountain.Peak # Add peak name to display
+
+forDisplay <- dist_matrix
+forDisplay[upper.tri(forDisplay, diag = FALSE)] <- " "
+
+kable(forDisplay[1:5, 1:5]) %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+
+
+```
+
+
+The first five peaks are plotted on a map...
+
+
+```{r addyMatrixMap, echo=FALSE}
+leaflet(peaks[1:5, 8:9]) %>% addTiles() %>% addCircleMarkers(label = paste(peaks[1:5, 2],peaks[1:5, 3], sep=","), labelOptions = labelOptions(noHide = T, textOnly = T))
+```
+
+You can see just in the first five data elements, that two or three groups appear depending on how 'deep' you look. 
+
+Next, we feed the distance matrix into a hierarchical cluster algorithm. You can visualize the results of how the peaks can be grouped with a [dendrogram](https://en.wikipedia.org/wiki/Dendrogram).
+
+
+```{r clustering, echo=FALSE}
+dist_matrix5 <- dist_matrix[1:5, 1:5]
+
+dist_matrix <- as.dist((dist_matrix)) # convert to a matrix for hClust
+dist_matrix5 <- as.dist(dist_matrix5)
+
+peak_clusters <- hclust(dist_matrix)
+peak_clusters5 <- hclust(dist_matrix5)
+```
+
+```{r clustering5, echo=FALSE}
+ggdendrogram(peak_clusters5, rotate=TRUE, size=2, theme_dendro = TRUE, labels = TRUE)+ theme_bw()
+```
+
+The vertical axis lists every mountain peak and the horizontal axis measures the degree of distance between groups. The horizontal axis ranges from zero to > 120. At zero, every mountain is its own cluster, so five clusters. At 120, you can see the data falls into two clusters and at about 20, there are three clusters.
+
+Here is the dendrogram for all peaks
+
+```{r clusteringAll, echo=FALSE}
+ggdendrogram(peak_clusters, rotate=TRUE, size=2, theme_dendro = TRUE, labels = TRUE)+ theme_bw()
+```
+
+You can use the dendrogram to determine how much distance there s between groups, or how many groups your data falls into. Picking a level to cluster on is called: cutting the tree. 
+
+Because the peaks are attributed to one of six mountain ranges, we will cut the tree at a height that gives six groups. The table below compares the hierarchical groups with the mountain ranges.
+
+
+```{r clusterCounts, echo=FALSE}
+cut_height <- 100
+kable(table(peaks$Mountain.Range, cutree(peak_clusters, k = 6))) %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+
+#kable(as.data.frame(table(cutree(peak_clusters, h = cut_height),dnn = list("Cluster")), responseName = "Peak count")) %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+
+```
+
+The groupings based on distance is similar to how they are organized in mountain ranges. Group 1 includes peaks from three different mountain ranges. Group 3 clusters all peaks from the San Juan range and Group 2 identifies the Sangre de Cristo Range.  
+
+The map below shows the peaks where the color represents each group and the labels show the mountain range. Mouse over to see the labels. 
+
+```{r clusterMap, echo=FALSE, warning=FALSE, message=FALSE}
+groups <- cutree(peak_clusters, k = 6)
+peaks$geoGroup <- groups
+
+
+factpal <- colorFactor(rainbow(6, start=.7, end=.1), peaks$geoGroup)  
+
+# leaflet(peaks) %>% addTiles("http://tile.thunderforest.com/outdoors/{z}/{x}/{y}.png?apikey=17f3a0ee3f19418eab# c9b82de5173654") %>% addCircleMarkers(color = ~factpal(geoGroup), radius=3, opacity = 1,label =  paste(peaks$Mountain.Range, paste("Group ", peaks$geoGroup), peaks$Mountain.Peak, sep=", "), labelOptions = labelOptions(noHide = FALSE, textOnly = FALSE)) %>%
+#  addLegend("bottomright", pal = factpal, values = ~geoGroup,
+#    title = "Peaks By Group",
+#    labFormat = labelFormat(prefix = ""),
+#    opacity = 1
+#  )
+
+# Normal map...
+ leaflet(peaks) %>% addTiles() %>% addCircleMarkers(color = ~factpal(geoGroup), radius=3, opacity = 1,label = paste(peaks$Mountain.Range, paste("Group ", peaks$geoGroup), peaks$Mountain.Peak, sep=", "), labelOptions = labelOptions(noHide = FALSE, textOnly = FALSE)) %>%
+   addLegend("bottomright", pal = factpal, values = ~geoGroup,
+     title = "Peaks By Group",
+     labFormat = labelFormat(prefix = ""),
+     opacity = 1
+   )
+
+# https://tile.thunderforest.com/outdoors/{z}/{x}/{y}.png?apikey=17f3a0ee3f19418eabc9b82de5173654 
+# 17f3a0ee3f19418eabc9b82de5173654
+
+```
+
+## Clustering on More Dimensions
+
+That is a simple example of clustering peaks by location. But, maybe we want to find similar groups of peaks by including more factors. perhaps, we want to group by a hikers experience for example. 
+
+The data also includes variables describing the hiking difficulty (on the standard route),  
+
+- **Distance_mi** - The distance in miles for the standard route
+- **Elevation.Gain_ft** - The elevation gain along the standard route
+-	**Difficulty_Rating** - A numeric representation of the hike's class 
+
+The table below shows the first five rows
+
+```{r ceanData, echo=FALSE, warning=FALSE, message=FALSE}
+peaks$Difficulty_Rating <- 0
+peaks[peaks$Difficulty == "Class 1",]$Difficulty_Rating <- 1
+peaks[peaks$Difficulty == "Class 2",]$Difficulty_Rating <- 2
+peaks[peaks$Difficulty == "Class 3",]$Difficulty_Rating <- 3
+peaks[peaks$Difficulty == "Class 4",]$Difficulty_Rating <- 4
+peaks[peaks$Difficulty == "Easy Class 3",]$Difficulty_Rating <- 2.75
+peaks[peaks$Difficulty == "Hard Class 2",]$Difficulty_Rating <- 2.5
+peaks[peaks$Difficulty == "Hard Class 3",]$Difficulty_Rating <- 3.5
+peaks$Traffic.avg <- (peaks$Traffic.High + peaks$Traffic.Low) / 2
+
+kable(head(peaks[,c(2,11,12,18)],5)) %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+
+pairs(peaks[,c(11,12,18)], pch = 19, lower.panel = NULL)
+
+```
+
+We will run another cluster analysis, but this time including the hiking difficulty variables along with the location (lat & long). Because the factors are measured using different scales, the data will be normalized before calculating distances. 
+
+```{r clusteringFull, echo=TRUE}
+
+scaledFactors <- scale(peaks[,c(8,9,11,12,18)]) # scaledFactors <- scale(peaks[,c(8,9,11,12,18,19)])
+
+dist_matrix <- dist(scaledFactors) # convert to a matrix for hClust
+
+peak_clusters <- hclust(dist_matrix)
+
+```
+
+```{r clusteringFullChart, echo=FALSE}
+ggdendrogram(peak_clusters, rotate=TRUE, size=2, theme_dendro = TRUE, labels = TRUE)+ theme_bw()
+
+#kable(table(peaks$Difficulty_Rating, cutree(peak_clusters, k = 8))) %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+
+```
+
+Based on what we know about the data and reviewing the dendrogram, we will cut the tree to produce 8 groups.
+
+```{r clusterMap2, echo=FALSE, warning=FALSE, message=FALSE}
+groups <- cutree(peak_clusters, k = 8)
+peaks$hikeGroup <- groups
+
+temp <- as.data.frame(table(cutree(peak_clusters, k = 8)))
+colnames(temp) <- c("Group8", "Members")
+kable(temp) %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+
+```
+
+The map and boxplot below show how the clustering algorithm grouped similar mountains based on hiker experience factors.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#factpal <- colorFactor(rainbow(9, start=.7, end=.1), peaks[peaks$hikeGroup == 6,]$Mountain.Peak)
+factpal <- colorFactor(rainbow(15, start=.7, end=.1), peaks$hikeGroup)
+
+
+leaflet(peaks) %>% addTiles() %>% addCircleMarkers(color = ~factpal(hikeGroup), radius=3, opacity = 1,label = paste(peaks$Mountain.Range, ", ", peaks$Mountain.Peak, ", group: ", peaks$hikeGroup, sep=""), labelOptions = labelOptions(noHide = FALSE, textOnly = FALSE)) %>% addLegend("bottomright", pal = factpal, values = ~hikeGroup, title = "Peaks By Group", labFormat = labelFormat(prefix = ""),opacity = 1)
+
+p1 <- plot_ly(peaks, x=~Distance_mi, color = ~as.factor(hikeGroup), type= "box", showlegend = FALSE) %>% layout(xaxis = list(title = "Distance (mi)"))
+p2 <- plot_ly(peaks, x=~Elevation.Gain_ft, color = ~as.factor(hikeGroup), type= "box", showlegend = FALSE) %>% layout(xaxis = list(title = "Elevation Gain (ft)"))
+p3 <- plot_ly(peaks, x=~Difficulty_Rating, color = ~as.factor(hikeGroup), type= "box", showlegend = FALSE) %>% layout(xaxis = list(title = "Difficulty"))
+
+subplot(p1, p2, p3, shareY = TRUE, shareX = TRUE) %>% layout(title = "14er Standard Route Hiker Experience Groupings", plot_bgcolor='rgba(240,240,240, 0.95)')
+
+
+axis = list(showline=FALSE,
+            zeroline=FALSE,
+            gridcolor='#ffff',
+            ticklen=4)
+
+pl_colorscale=list(c(0.0, '#19d3f3'),
+                   c(0.333, '#19d3f3'),
+                   c(0.333, '#e763fa'),
+                   c(0.666, '#e763fa'),
+                   c(0.666, '#636efa'),
+                   c(1, '#636efa'))
+
+splom <- peaks %>%
+    plot_ly() %>%
+    add_trace(
+        type = 'splom',
+        dimensions = list(
+            list(label='Distance', values=~Distance_mi),
+            list(label='Elevation.Gain_ft', values=~Elevation.Gain_ft),
+            list(label='Difficulty_Rating', values=~Difficulty_Rating)
+        ),
+        text=~peaks$Mountain.Peak,
+        marker = list(
+            color = as.integer(peaks$Mountain.Range),
+            colorscale = pl_colorscale,
+            size = 7,
+            line = list(
+                width = 1,
+                color = 'rgb(230,230,230)'
+            )
+        )
+    ) %>%
+    layout(
+        title= 'Hiker Experience Factors',
+        hovermode='closest',
+        dragmode= 'select',
+        plot_bgcolor='rgba(240,240,240, 0.95)',
+        xaxis=list(domain=NULL, showline=F, zeroline=F, gridcolor='#ffff', ticklen=4),
+        yaxis=list(domain=NULL, showline=F, zeroline=F, gridcolor='#ffff', ticklen=4),
+        xaxis2=axis,
+        xaxis3=axis,
+        xaxis4=axis,
+        yaxis2=axis,
+        yaxis3=axis,
+        yaxis4=axis
+    ) %>% style(diagonal = list(visible = T), showupperhalf = F)
+
+splom
+
+
+# <img src="`r peaks[51,]$photo`", height = '600', width = '200'>
+
+```
+
+
+For example, you can see that Group 4 includes the easiest mountains that also happen to be more accessible to people living in Denver and the front range. Group 5 include the most technically challenging peaks.
+
+## Benchmarking
+
+If you have a large dataset, especially one with a lot of dimensions, clustering is a great step to pulling out relevant and useful insights. Within the property management context, for example, it can show Building Managers how their performance compares with other similar facilities. It can also show investors revenue and cost benchmarks items for a particular area. 
+
+For fourteener hikers, the groupings can narrow the 53 peaks down to a handful that match their interests. 
+
+For example, say there is someone who hiked **Snowmass mountain** and loved the technical challenge. 
+
+The person's interests might best relate to Group five. The radar charts show Snowmass and the other two peaks in Group 5 that are in the Elk Mountains Range
+
+```{r, RadarCharts, echo=FALSE, warning=FALSE, message=FALSE}
+
+SM <- plot_ly(
+    type = 'scatterpolar',
+    mode = 'lines',  line = list(color = 'rgba(0,100,80,1)'), fill = 'toself', fillcolor = 'rgba(168, 216, 234, 0.5)'
+) %>%
+    add_trace(
+        r = c(22,5.8,3.5),
+        theta = c("Distance (mi)", "Elevation Gain (000s ft)", "Difficulty Rating"),
+        name = "Snowmass Mountain"
+    ) %>%
+    layout(title = "Snowmass Mountain", polar = list(
+        radialaxis = list(
+            visible = T,
+            range = c(0,22)
+        )
+    ),
+    showlegend = F
+    )
+
+SM_Compare <- plot_ly(
+    type = 'scatterpolar',
+    mode = 'lines', fill = 'toself'
+) %>%
+  add_trace(
+    r = c(17, 5.3, 4),
+    theta = c("Distance (mi)", "Elevation Gain (000s ft)", "Difficulty Rating"),
+    name = "Capitol Peak"
+  ) %>%
+  add_trace(
+    r = c(8.25,4.5,4),
+    theta = c("Distance (mi)", "Elevation Gain (000s ft)", "Difficulty Rating"),
+    name = "Pyramid Peak",
+    subplot = 'polar2'
+  ) %>%
+  layout(
+    polar = list(
+      domain = list(
+        x = c(0,0.46),
+        y = c(0.56,1)
+      ),
+      
+      radialaxis = list(
+        visible = T,
+        range = c(1,20),
+        nticks = 5
+      )
+    ),
+    polar2 = list(
+      domain = list(
+        x = c(.54, 1),
+        y = c(.56,1)
+      ),
+        radialaxis = list(
+        visible = T,
+        range = c(1,20),
+        nticks = 5
+      )
+
+    ),
+    showlegend = T
+  )
+
+SM
+SM_Compare
+
+```
+
+The table and map below show all the mountains in Group 5
+
+```{r, bench1, echo=FALSE, warning=FALSE, message=FALSE}
+
+kable(peaks[peaks$hikeGroup == 5, c(2,3,10,11,12,13,20)]) %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+
+leaflet(peaks[peaks$hikeGroup == 5,]) %>% addTiles() %>% addCircleMarkers(color = "brown", fill = TRUE, fillColor = "chocolate",fillOpacity = 0.8, radius=8, opacity = 1, stroke = TRUE, label = paste(peaks[peaks$hikeGroup == 5,]$Mountain.Range, ", ", peaks[peaks$hikeGroup == 5,]$Mountain.Peak, sep=""), labelOptions = labelOptions(noHide = FALSE, textOnly = FALSE))
+```
+
+## The End
