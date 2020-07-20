@@ -39,9 +39,9 @@ kable(head(peaks[1:5,c(2:4,10:15)])) %>% kable_styling(bootstrap_options = c("st
 
 ## Approach
 
-Each mountain peak is ranked by each of the four key variables that reflect hiker experience. For example, the mountins can be sorted by the distance of the mountains standard route. From the shortest route to the longest. The rankings are then grouped into six bands. The peaks in band one have the shortest distance while the peaks in band six have the longest. The same is trye for elevation gain, difficulty, and traffic. 
+Each mountain peak is ranked by each of the four key variables that reflect hiker experience. For example, the mountains can be sorted by the distance of the mountains standard route. From the shortest route to the longest. The rankings are then grouped into six bands. The peaks in band one have the shortest distance while the peaks in band six have the longest. The same is done for elevation gain, difficulty, and traffic. 
 
-The purpose of the bands is to provide a simple comparison of hiker experience characteristics between peaks. THey also provide a common scale for variables of different measures.  
+The purpose of the bands is to provide a simple comparison of hiker experience characteristics between peaks. They also provide a common scale for variables of different measures.  
 
 The table below lists the first five peaks with the grouped ranking of hiker experience variables, 
 
@@ -111,7 +111,7 @@ kable(head(peaks[1:5,c(2:4,17:20)])) %>% kable_styling(bootstrap_options = c("st
 
 ## The Chart
 
-Here is a polar chart for Mount Elbert, the highest peak in Colorado. It shows the technical difficulty is low while the trail length and elevation gain are about average among other Colorado fourteeners. Possibly because the peak is accessible or perhaps because of its prominence, it is one of the most popular fourteeners. 
+Here is a polar chart for Mount Elbert, the highest peak in Colorado. It shows the technical difficulty is low while the trail length and elevation gain is about average among other Colorado fourteeners. Possibly because the peak is accessible or perhaps because of its prominence, it is one of the most popular fourteeners. 
 
 ```{r SingleChart1, echo=FALSE}
 
@@ -145,6 +145,20 @@ fig2 <- fig %>%
   #subplot = 'polar2'
   )
 
+r <- 29
+
+fig3 <- fig %>% 
+  add_trace(
+  r = c(peaks[r,17],peaks[r,18],peaks[r,19],peaks[r,20],peaks[r,17]),
+  theta = c("Distance", "Elevation Gain", "Difficulty", "Traffic", "Distance"),
+  name = peaks[r,2],
+  fill = 'toself',
+  line = list(width=2, shape = "spline", color="DarkRed"),
+  fillcolor = 'rgba(255,122,66,0.5)'
+  #subplot = 'polar3'
+  )
+
+
 fig1 <- fig1 %>%
   layout(
     polar = list(
@@ -168,5 +182,22 @@ fig2 <- fig2 %>%
 
 fig2
 ```
+
+
+Capitol Peak is considered one of Colorado's most difficult Fourteeners. That combined with its location near Aspen, CO positions this peak a long distance from Denver and other populated areas. The shape of this chart reflects the difficulty and relatively low traffic.
+
+```{r SingleChart3, echo=FALSE}
+fig3 <- fig3 %>%
+  layout(
+    polar = list(
+    radialaxis = list(visible = T, range = c(0,6), showticklabels =F, showline = F),
+    angularaxis = list( rotation="30")
+  ))
+
+fig3
+```
+
+
+The End
 
 
