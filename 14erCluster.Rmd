@@ -2,7 +2,7 @@
 title: "Clustering & Benchmarking Property"
 author: "Mike Wehinger"
 date: "1 May 2019"
-output: html_document
+output: md_document
 ---
 
 ```{r setup, include=FALSE}

@@ -1,0 +1,172 @@
+---
+title: "Exploring Polar Charts"
+author: "Mike Wehinger"
+date: "9 April 2020"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(plotly)
+library(kableExtra)
+library(dplyr)
+```
+
+## Objective
+
+This is an exploration of how polar charts (aka radar chart or spider diagram) can help visualize different characteristics of similar observations. 
+
+## Data
+This example will use the Colorado Fourteener dataset, which describes 58 mountain peaks in Colorado that rise above 14,000 ft (4,270 meters) in elevation. 
+
+The data includes variables that reflect hiker experiences climbing various peaks including,
+
+- **Distance_mi** - The distance in miles for the standard route
+- **Elevation.Gain_ft** - The elevation gain along the standard route
+- **Difficulty_Rating** - Difficulty - The Yosemite Decimal System difficulty rating, a value ranging from Class 1 (easiest) to Class 5 (most difficult) 
+- **Traffic** - Estimated number of hikers visiting the peak in 2017
+
+The table below lists the first five peaks in the dataset including the relevant variables.
+
+```{r dataTable, echo=FALSE}
+
+peaks <- read.csv("../14er.csv")
+#peaks <- read.csv("../input/14er.csv")
+#peaks <- peaks[peaks$fourteener == "Y",]
+kable(head(peaks[1:5,c(2:4,10:15)])) %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+```
+
+## Approach
+
+Each mountain peak is ranked by each of the four key variables that reflect hiker experience. For example, the mountins can be sorted by the distance of the mountains standard route. From the shortest route to the longest. The rankings are then grouped into six bands. The peaks in band one have the shortest distance while the peaks in band six have the longest. The same is trye for elevation gain, difficulty, and traffic. 
+
+The purpose of the bands is to provide a simple comparison of hiker experience characteristics between peaks. THey also provide a common scale for variables of different measures.  
+
+The table below lists the first five peaks with the grouped ranking of hiker experience variables, 
+
+
+```{r rankings, echo=FALSE}
+
+# Set the rank for distance
+peaks <- peaks %>%
+  mutate(
+    r_distance = case_when(
+      Distance_mi <= 6.5 ~ 1,
+      Distance_mi > 6.5 & Distance_mi <= 9 ~ 2,
+      Distance_mi > 9 & Distance_mi <= 11.5 ~ 3,
+      Distance_mi > 11.5 & Distance_mi <= 14 ~ 4,
+      Distance_mi > 14 & Distance_mi <= 16.75 ~ 5,
+      Distance_mi > 16.75 ~ 6,
+      TRUE ~ 20
+    )
+  )
+
+# Set the rank for elevation gain
+peaks <- peaks %>%
+  mutate(
+    r_gain = case_when(
+      Elevation.Gain_ft >= 2000 & Elevation.Gain_ft <= 2750 ~ 1,
+      Elevation.Gain_ft > 2750 & Elevation.Gain_ft <= 3500 ~ 2,
+      Elevation.Gain_ft > 3500 & Elevation.Gain_ft <= 4250 ~ 3,
+      Elevation.Gain_ft > 4250 & Elevation.Gain_ft <= 5000 ~ 4,
+      Elevation.Gain_ft > 5000 & Elevation.Gain_ft <= 5750 ~ 5,
+      Elevation.Gain_ft > 5750 ~ 6,
+      TRUE ~ 20
+    )
+  )
+
+# Set the rank for difficulty
+peaks <- peaks %>%
+  mutate(
+    r_difficulty = case_when(
+      Difficulty == "Class 1" ~ 1,
+      Difficulty == "Class 2" ~ 2,
+      Difficulty == "Hard Class 2" ~ 3,
+      Difficulty == "Easy Class 3" ~ 4,
+      Difficulty == "Class 3" | Difficulty == "Hard Class 3" ~ 5,
+      Difficulty == "Class 4" ~ 6,
+      TRUE ~ 20
+    )
+  )
+
+
+# Set the rank for traffic
+peaks <- peaks %>%
+  mutate(
+    r_traffic = case_when(
+      Traffic.High == 3000 ~ 1,
+      Traffic.High == 5000 ~ 2,
+      Traffic.High == 7000 |  Traffic.High == 10000 ~ 3,
+      Traffic.High == 20000 ~ 4,
+      Traffic.High == 25000 |  Traffic.High == 30000 ~ 5,
+      Traffic.High == 40000 ~ 6,
+      TRUE ~ 20
+    )
+  )
+
+kable(head(peaks[1:5,c(2:4,17:20)])) %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+
+```
+
+## The Chart
+
+Here is a polar chart for Mount Elbert, the highest peak in Colorado. It shows the technical difficulty is low while the trail length and elevation gain are about average among other Colorado fourteeners. Possibly because the peak is accessible or perhaps because of its prominence, it is one of the most popular fourteeners. 
+
+```{r SingleChart1, echo=FALSE}
+
+fig <- plot_ly(
+  type = 'scatterpolar',
+  mode = 'lines'
+)
+
+r <- 1
+
+fig1 <- fig %>% 
+  add_trace(
+  r = c(peaks[r,17],peaks[r,18],peaks[r,19],peaks[r,20],peaks[r,17]),
+  theta = c("Distance", "Elevation Gain", "Difficulty", "Traffic", "Distance"),
+  name = peaks[r,2],
+  fill = 'toself',
+  line = list(width=2, shape = "spline", color="DarkGreen"),
+  fillcolor = 'rgba(26,150,65,0.5)'
+  )
+
+r <- 15
+
+fig2 <- fig %>% 
+  add_trace(
+  r = c(peaks[r,17],peaks[r,18],peaks[r,19],peaks[r,20],peaks[r,17]),
+  theta = c("Distance", "Elevation Gain", "Difficulty", "Traffic", "Distance"),
+  name = peaks[r,2],
+  fill = 'toself',
+  line = list(width=2, shape = "spline", color="Blue"),
+  fillcolor = 'rgba(51,153,255,0.5)'
+  #subplot = 'polar2'
+  )
+
+fig1 <- fig1 %>%
+  layout(
+    polar = list(
+    radialaxis = list(visible = T, range = c(0,6), showticklabels =F, showline = F),
+    angularaxis = list( rotation="30")
+  ))
+
+fig1
+  
+```
+
+Longs Peak is another prominent peak given its mark on the horizon West of the Front Range / Denver area. The chart shows that the trail distance, elevation gain, and difficulty are all higher for this peak than most other fourteeners. Nonetheless, Longs Peak is still a busy fourteener.
+
+```{r SingleChart2, echo=FALSE}
+fig2 <- fig2 %>%
+  layout(
+    polar = list(
+    radialaxis = list(visible = T, range = c(0,6), showticklabels =F, showline = F),
+    angularaxis = list( rotation="30")
+  ))
+
+fig2
+```
+
+
